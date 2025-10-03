@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, BackgroundTasks, Query
 from fastapi.responses import FileResponse
 import subprocess
 import os
@@ -11,8 +11,19 @@ app = FastAPI()
 def home():
     return {"message": "Welcome to BGM Enhancer API"}
 
+def remove_file(path: str):
+    """Helper function to delete a file if it exists."""
+    if os.path.exists(path):
+        os.remove(path)
+
 @app.post("/upload-audio/")
-async def upload_audio(file: UploadFile = File(...)):
+async def upload_audio(
+    file: UploadFile = File(...),
+    volume_gain: float = Query(None, gt=0, description="Volume multiplier, e.g., 1.5 for +50%"),
+    bass_gain: float = Query(None, description="Bass gain in dB, e.g., 10"),
+    treble_gain: float = Query(None, description="Treble gain in dB, e.g., 5"),
+    background_tasks: BackgroundTasks = None
+):
     # Extract original file extension
     ext = Path(file.filename).suffix.lower()
     if ext not in [".mp3", ".wav", ".m4a", ".ogg"]:
@@ -27,13 +38,28 @@ async def upload_audio(file: UploadFile = File(...)):
         with open(input_filename, "wb") as f:
             f.write(await file.read())
 
-        # FFmpeg filter: increase volume + bass boost
+        # Build FFmpeg filter dynamically based on provided gains
+        filters = []
+        if bass_gain is not None:
+            filters.append(f"bass=g={bass_gain}")
+        if treble_gain is not None:
+            filters.append(f"treble=g={treble_gain}")
+        if volume_gain is not None:
+            filters.append(f"volume={volume_gain}")
+
+        ffmpeg_filter = ",".join(filters) if filters else "bass=g=10,volume=1.5"
+
+        # Run FFmpeg
         command = [
             "ffmpeg", "-i", input_filename,
-            "-af", "bass=g=10,volume=1.5",
+            "-af", ffmpeg_filter,
             output_filename
         ]
         subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+
+        # Schedule deletion of both input and output files after response
+        background_tasks.add_task(remove_file, input_filename)
+        background_tasks.add_task(remove_file, output_filename)
 
         # Return enhanced file as downloadable response
         return FileResponse(
@@ -43,10 +69,7 @@ async def upload_audio(file: UploadFile = File(...)):
         )
 
     except Exception as e:
+        # Cleanup immediately in case of error
+        remove_file(input_filename)
+        remove_file(output_filename)
         return {"status": "error", "details": str(e)}
-
-    finally:
-        # Cleanup input and output files after sending response
-        if os.path.exists(input_filename):
-            os.remove(input_filename)
-        # For output file, consider BackgroundTasks to delete after download
