@@ -38,7 +38,7 @@ async def upload_audio(
         with open(input_filename, "wb") as f:
             f.write(await file.read())
 
-        # Build FFmpeg filter dynamically based on provided gains
+        # Build FFmpeg filter dynamically
         filters = []
         if bass_gain is not None:
             filters.append(f"bass=g={bass_gain}")
@@ -49,19 +49,22 @@ async def upload_audio(
 
         ffmpeg_filter = ",".join(filters) if filters else "bass=g=10,volume=1.5"
 
-        # Run FFmpeg
+        # Run FFmpeg and capture stdout/stderr
         command = [
             "ffmpeg", "-i", input_filename,
             "-af", ffmpeg_filter,
             output_filename
         ]
-        subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if result.returncode != 0:
+            # Return FFmpeg stderr in response
+            error_message = result.stderr.decode()
+            return {"status": "error", "details": f"FFmpeg failed:\n{error_message}"}
 
-        # Schedule deletion of both input and output files after response
+        # Schedule deletion after response
         background_tasks.add_task(remove_file, input_filename)
         background_tasks.add_task(remove_file, output_filename)
 
-        # Return enhanced file as downloadable response
         return FileResponse(
             path=output_filename,
             media_type=f"audio/{ext.replace('.', '')}",
@@ -69,7 +72,6 @@ async def upload_audio(
         )
 
     except Exception as e:
-        # Cleanup immediately in case of error
         remove_file(input_filename)
         remove_file(output_filename)
         return {"status": "error", "details": str(e)}
