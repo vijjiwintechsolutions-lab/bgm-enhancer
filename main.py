@@ -1,5 +1,8 @@
 from fastapi import FastAPI, UploadFile, File
-import uvicorn
+from fastapi.responses import FileResponse
+import subprocess
+import os
+from uuid import uuid4
 
 app = FastAPI()
 
@@ -9,13 +12,35 @@ def home():
 
 @app.post("/upload-audio/")
 async def upload_audio(file: UploadFile = File(...)):
-    # For now, just return file details (we can add FFmpeg later)
-    return {
-        "filename": file.filename,
-        "content_type": file.content_type,
-        "status": "File received successfully"
-    }
+    # Generate unique filenames
+    input_filename = f"temp_{uuid4()}.mp3"
+    output_filename = f"enhanced_{uuid4()}.mp3"
 
-# For local testing (won't be used on Render, since it overrides with $PORT)
-if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    try:
+        # Save uploaded file temporarily
+        with open(input_filename, "wb") as f:
+            f.write(await file.read())
+
+        # FFmpeg filter: increase volume + bass boost
+        command = [
+            "ffmpeg", "-i", input_filename,
+            "-af", "bass=g=10,volume=1.5",
+            output_filename
+        ]
+        subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+
+        # Return enhanced file as downloadable response
+        return FileResponse(
+            path=output_filename,
+            media_type="audio/mpeg",
+            filename=f"enhanced_{file.filename}"
+        )
+
+    except Exception as e:
+        return {"status": "error", "details": str(e)}
+
+    finally:
+        # Cleanup input and output files after sending response
+        if os.path.exists(input_filename):
+            os.remove(input_filename)
+        # Delay deletion of output file a few seconds if needed, or handle via background task
