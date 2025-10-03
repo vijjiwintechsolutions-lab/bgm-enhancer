@@ -6,7 +6,17 @@ services:
     plan: free
     branch: main          # Your GitHub branch
     buildCommand: |
+      # Update and install FFmpeg
       apt-get update && apt-get install -y ffmpeg
+
+      # Setup Python venv
+      python3 -m venv venv
+      source venv/bin/activate
+
+      # Upgrade pip and install dependencies
       pip install --upgrade pip
       pip install -r requirements.txt
-    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+
+    startCommand: |
+      source venv/bin/activate
+      uvicorn main:app --host 0.0.0.0 --port $PORT
