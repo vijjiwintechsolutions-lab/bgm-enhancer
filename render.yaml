@@ -3,19 +3,13 @@ services:
     name: bgm-enhancer-api
     env: debian
     plan: free
-    branch: main          # Your GitHub branch
+    branch: main
     buildCommand: |
-      # Install FFmpeg
       apt-get update && apt-get install -y ffmpeg
-
-      # Setup Python virtual environment
       python3 -m venv venv
       source venv/bin/activate
-
-      # Upgrade pip and install dependencies
       pip install --upgrade pip
       pip install -r requirements.txt
-
     startCommand: |
       source venv/bin/activate
       uvicorn main:app --host 0.0.0.0 --port $PORT
