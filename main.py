@@ -3,6 +3,7 @@ from fastapi.responses import FileResponse
 import subprocess
 import os
 from uuid import uuid4
+from pathlib import Path
 
 app = FastAPI()
 
@@ -12,9 +13,14 @@ def home():
 
 @app.post("/upload-audio/")
 async def upload_audio(file: UploadFile = File(...)):
+    # Extract original file extension
+    ext = Path(file.filename).suffix.lower()
+    if ext not in [".mp3", ".wav", ".m4a", ".ogg"]:
+        return {"status": "error", "details": "Unsupported audio format"}
+
     # Generate unique filenames
-    input_filename = f"temp_{uuid4()}.mp3"
-    output_filename = f"enhanced_{uuid4()}.mp3"
+    input_filename = f"temp_{uuid4()}{ext}"
+    output_filename = f"enhanced_{uuid4()}{ext}"
 
     try:
         # Save uploaded file temporarily
@@ -32,7 +38,7 @@ async def upload_audio(file: UploadFile = File(...)):
         # Return enhanced file as downloadable response
         return FileResponse(
             path=output_filename,
-            media_type="audio/mpeg",
+            media_type=f"audio/{ext.replace('.', '')}",
             filename=f"enhanced_{file.filename}"
         )
 
@@ -43,4 +49,4 @@ async def upload_audio(file: UploadFile = File(...)):
         # Cleanup input and output files after sending response
         if os.path.exists(input_filename):
             os.remove(input_filename)
-        # Delay deletion of output file a few seconds if needed, or handle via background task
+        # For output file, consider BackgroundTasks to delete after download
