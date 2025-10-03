@@ -1,5 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, BackgroundTasks, Query
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 import subprocess
 import os
 from uuid import uuid4
@@ -7,15 +8,14 @@ from pathlib import Path
 
 app = FastAPI()
 
-@app.get("/")
-def home():
-    return {"message": "Welcome to BGM Enhancer API"}
+# Serve static files from /static folder
+app.mount("/", StaticFiles(directory="static", html=True), name="static")
 
 def remove_file(path: str):
     if os.path.exists(path):
         os.remove(path)
 
-# Accept both /upload-audio and /upload-audio/ to avoid route issues
+# Accept both /upload-audio and /upload-audio/
 @app.post("/upload-audio")
 @app.post("/upload-audio/")
 async def upload_audio(
